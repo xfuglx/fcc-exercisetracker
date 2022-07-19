@@ -19,7 +19,9 @@ app
   .route("/api/users/")
   .post(async (req, res) => {
     try {
-      const dupCheck = await Log.findOne({ username: req.body.username }).select(["_id", "username"]);
+      const dupCheck = await Log.findOne({
+        username: req.body.username,
+      }).select(["_id", "username"]);
       if (dupCheck) {
         console.log("User already registered");
         res.json(dupCheck);
@@ -42,9 +44,15 @@ app
 
 // * /api/users/:_id/exercises route
 app.post("/api/users/:_id/exercises", async (req, res) => {
+  let d = new Date(
+    new Date().getTime() + parseInt(process.env.TIMESHIFT)
+  ).toDateString();
+  console.log(d);
+
   const description = req.body.description;
   const duration = parseInt(req.body.duration);
-  const date = req.body.date === undefined ? new Date().toDateString() : new Date(req.body.date).toDateString();
+  const date =
+    req.body.date === undefined ? d : new Date(req.body.date).toDateString();
   try {
     const user = await Log.findOneAndUpdate(
       { _id: req.params._id || req.body[":_id"] },
@@ -78,13 +86,53 @@ app.post("/api/users/:_id/exercises", async (req, res) => {
 // * /api/users/:_id/logs route
 app.get("/api/users/:_id/logs", async (req, res) => {
   let { from, to, limit } = req.query;
-  from = from === undefined ? 0 : new Date(from).getTime();
-  to = to === undefined ? new Date().getTime() : new Date(to).getTime();
-  limit = limit || 0;
+  from =
+    from === undefined
+      ? 0
+      : new Date(from).getTime() + parseInt(process.env.TIMESHIFT);
+  to =
+    to === undefined
+      ? new Date().getTime() + parseInt(process.env.TIMESHIFT)
+      : new Date(to).getTime() + parseInt(process.env.TIMESHIFT);
+  console.log(`${from}, ${to}, ${limit}`);
+
+  let pointer = 0;
+
   try {
-    const data = await Log.findOne({ _id: req.params._id }).select(["username", "count", "_id", "log"]);
+    const { username, count, _id, log } = await Log.findOne({
+      _id: req.params._id,
+    });
     console.log("Data fetched");
-    res.json(data);
+    const newLog = log
+      .map((l) => {
+        let d = new Date(
+          new Date(l.date).getTime() + parseInt(process.env.TIMESHIFT)
+        ).toDateString();
+        console.log(d);
+        return {
+          description: l.description,
+          duration: l.duration,
+          date: d,
+        };
+      })
+      .filter((l) => {
+        // console.log(new Date(l.date).getTime());
+        if (
+          new Date(l.date).getTime() <= to &&
+          new Date(l.date).getTime() >= from
+        ) {
+          if (limit === undefined) {
+            return true;
+          } else if (pointer < limit) {
+            pointer++;
+            return true;
+          }
+        }
+        return false;
+      });
+    console.log(newLog, "\n");
+    res.json({ _id, username, count, log: newLog });
+    // res.json(data);
   } catch {
     console.log("Error fetching data");
   }
